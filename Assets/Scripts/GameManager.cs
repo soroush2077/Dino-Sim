@@ -5,70 +5,125 @@ using TMPro;
 
 public class GameManager : MonoBehaviour
 {
+    public const string HighScoreKey = "HighScore";
     public static GameManager Instance { get; private set; }
 
     public float Speed { get; private set; }
     public bool IsGameOver { get; private set; }
+    public bool IsPaused { get; private set; }
     public int HighScore { get; private set; }
+    public int Coins { get; private set; }
 
-    [SerializeField] float startSpeed = 5f;
+    [Header("Gameplay")]
+    [SerializeField] float startSpeed = 6f;
     [SerializeField] float acceleration = 0.1f;
+    [SerializeField] float maxSpeed = 16f;
+    [SerializeField] int scorePerCoin = 50;
+
+    [Header("HUD")]
     [SerializeField] TMP_Text scoreText;
     [SerializeField] TMP_Text highScoreText;
 
+    [Header("Game Over Panel")]
+    [SerializeField] GameObject gameOverPanel;
+    [SerializeField] TMP_Text finalScoreText;
+    [SerializeField] GameObject newHighScoreLabel;
+    [SerializeField] float panelDelay = 1.2f;
+
     float score;
-    int stars;
+    float gameOverTime;
+    int finalScore;
+    bool isNewBest;
 
     void Awake()
     {
         Instance = this;
+        Time.timeScale = 1f;
         Speed = startSpeed;
-        HighScore = PlayerPrefs.GetInt("HighScore", 0);
+        HighScore = PlayerPrefs.GetInt(HighScoreKey, 0);
     }
 
     void Start()
     {
-        UpdateTexts();
+        if (gameOverPanel) gameOverPanel.SetActive(false);
+        UpdateHUD();
     }
 
     void Update()
     {
+        if (IsPaused) return;
+
         if (IsGameOver)
         {
-            if (Keyboard.current.spaceKey.wasPressedThisFrame)
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            if (Time.time - gameOverTime > panelDelay && Keyboard.current.spaceKey.wasPressedThisFrame)
+                Restart();
             return;
         }
 
-        Speed += acceleration * Time.deltaTime;
+        Speed = Mathf.Min(Speed + acceleration * Time.deltaTime, maxSpeed);
         score += Speed * Time.deltaTime;
-        UpdateTexts();
+        UpdateHUD();
     }
 
-    public void AddStars(int amount)
+    public void AddCoin(int amount)
     {
-        stars += amount;
-        score += amount * 50f;      // bonus points; remove if you want stars to be separate
+        Coins += amount;
+        score += amount * scorePerCoin;
+    }
+
+    public void SetPaused(bool paused)
+    {
+        if (IsGameOver) return;
+        IsPaused = paused;
+        Time.timeScale = paused ? 0f : 1f;
     }
 
     public void GameOver()
     {
-        if (IsGameOver) return;     // ignore repeat calls
+        if (IsGameOver) return;
         IsGameOver = true;
+        gameOverTime = Time.time;
 
-        int final = Mathf.FloorToInt(score);
-        if (final > HighScore)
+        finalScore = Mathf.FloorToInt(score);
+        isNewBest = finalScore > HighScore;
+        if (isNewBest)
         {
-            HighScore = final;
-            PlayerPrefs.SetInt("HighScore", HighScore);
+            HighScore = finalScore;
+            PlayerPrefs.SetInt(HighScoreKey, HighScore);
             PlayerPrefs.Save();
         }
-        UpdateTexts();
+
+        UpdateHUD();
+        Invoke(nameof(ShowGameOverPanel), panelDelay);    // wait so the death animation can play
     }
 
-    void UpdateTexts()
+    void ShowGameOverPanel()
     {
-        scoreText.text = Mathf.FloorToInt(score).ToString("D5");
-        highScoreText.text = "HI " + HighScore.ToString("D5");
+        if (gameOverPanel == null) return;
+
+        gameOverPanel.SetActive(true);
+        if (finalScoreText) finalScoreText.text = "SCORE " + finalScore.ToString("D5");
+        if (newHighScoreLabel) newHighScoreLabel.SetActive(isNewBest);
+    }
+
+    public void Restart()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public void LoadMenu()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("MainMenu");
+    }
+
+    void UpdateHUD()
+    {
+        int current = Mathf.FloorToInt(score);
+        int best = Mathf.Max(HighScore, current);
+
+        scoreText.text = current.ToString("D5");
+        highScoreText.text = "HI " + best.ToString("D5");
     }
 }
